@@ -386,6 +386,22 @@ details p{margin:0 0 8px}
   </div>
 </div>
 
+<!-- Conectar con la clave -->
+<div class="ov" id="ovKey" role="dialog" aria-modal="true" aria-labelledby="keyTitle">
+  <div class="modal" style="max-width:420px">
+    <header>
+      <div><h2 id="keyTitle">Conectar con Google Sheets</h2><div class="sub">Escribe la clave para ver y guardar los datos compartidos. Solo se pide una vez en este dispositivo.</div></div>
+      <button class="xbtn" type="button" data-close aria-label="Cerrar">×</button>
+    </header>
+    <div class="field"><label for="keyInput">Clave</label><input id="keyInput" type="password" autocomplete="current-password"></div>
+    <div class="hint" id="keyMsg"></div>
+    <div class="row end">
+      <button class="btn" type="button" data-close>Ahora no</button>
+      <button class="btn primary" type="button" id="keyGo">Conectar</button>
+    </div>
+  </div>
+</div>
+
 <script>
 /*LOGIC-START*/
 const DAY = 86400000;
@@ -1146,17 +1162,28 @@ $("dataFile").addEventListener("change", e => {
   };
   rd.readAsText(f);
 });
-$("shConnect").addEventListener("click", async () => {
-  const u = $("shUrl").value.trim(), k = $("shKey").value.trim();
-  if (!/^https:\/\/script\.google\.com\/.+\/exec$/.test(u)) { $("shMsg").textContent = "El enlace debe empezar por https://script.google.com/ y acabar en /exec."; return; }
-  if (!k) { $("shMsg").textContent = "Escribe la clave."; $("shKey").focus(); return; }
+async function connectSheet(u, k) {
+  if (!/^https:\/\/script\.google\.com\/.+\/exec$/.test(u)) return "El enlace debe empezar por https://script.google.com/ y acabar en /exec.";
+  if (!k) return "Escribe la clave.";
   lsSet(LS_KEY + "-sheet-url", u === SHEET_URL_DEFAULT ? "" : u); lsSet(LS_KEY + "-sheet-key", k);
-  $("shMsg").textContent = "Probando…";
   const j = await sheetPull(true);
-  if (j && j.ok) $("shMsg").textContent = "Conectado. Los datos se guardan en Google Sheets.";
-  else if (j && j.error === "clave") { $("shMsg").textContent = "Clave incorrecta."; lsSet(LS_KEY + "-sheet-key", ""); }
-  else $("shMsg").textContent = "No se pudo conectar. Revisa el enlace (debe acabar en /exec) y la conexión.";
+  if (j && j.ok) return "";
+  if (j && j.error === "clave") { lsSet(LS_KEY + "-sheet-key", ""); return "Clave incorrecta."; }
+  lsSet(LS_KEY + "-sheet-key", "");
+  return "No se pudo conectar. Revisa la conexión a internet o el enlace en Ajustes.";
+}
+$("shConnect").addEventListener("click", async () => {
+  $("shMsg").textContent = "Probando…";
+  const err = await connectSheet($("shUrl").value.trim(), $("shKey").value.trim());
+  $("shMsg").textContent = err || "Conectado. Los datos se guardan en Google Sheets.";
 });
+$("keyGo").addEventListener("click", async () => {
+  $("keyMsg").textContent = "Conectando…";
+  const err = await connectSheet(sheetUrl(), $("keyInput").value.trim());
+  if (err) { $("keyMsg").textContent = err; $("keyInput").select(); }
+  else { $("keyInput").value = ""; $("keyMsg").textContent = ""; closeOv("ovKey"); }
+});
+$("keyInput").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); $("keyGo").click(); } });
 $("shOff").addEventListener("click", () => { lsSet(LS_KEY + "-sheet-key", ""); $("shKey").value = ""; $("shMsg").textContent = "Desconectado: este dispositivo guarda solo en local."; setSync("Guardado automáticamente en este navegador", "ok"); });
 let resetArmed = false;
 $("dataReset").addEventListener("click", () => {
@@ -1170,6 +1197,7 @@ render();
 let cloudTried = false;
 function tryCloud() { if (cloudTried) return; if (window.claude && typeof window.claude.use === "function") { cloudTried = true; initCloud(); } }
 if (sheetKey()) { cloudTried = true; sheetPull(); } else tryCloud();
+if (!sheetKey() && !window.claude) { openOv("ovKey"); setTimeout(() => $("keyInput").focus(), 60); }
 setTimeout(() => { if (!cloudTried) { tryCloud(); if (!cloudTried) setSync("Guardado automáticamente en este navegador", "ok"); } }, 1500);
 </script>
 </body>
