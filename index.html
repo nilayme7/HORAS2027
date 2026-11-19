@@ -357,6 +357,15 @@ details p{margin:0 0 8px}
       <div class="hint">Añade los festivos del periodo (nacionales, de Cataluña y locales). También puedes marcar un día como «Festivo» directamente en el calendario.</div>
     </div>
     <div class="field">
+      <label for="shUrl">Google Sheets · enlace del servicio (/exec)</label>
+      <input id="shUrl" type="url" spellcheck="false" autocomplete="off">
+      <label for="shKey">Clave</label>
+      <input id="shKey" type="password" autocomplete="off" placeholder="La clave que pusiste en el script">
+      <div class="row"><button class="btn small primary" type="button" id="shConnect">Conectar y probar</button>
+        <button class="btn small" type="button" id="shOff">Desconectar este dispositivo</button><span class="hint" id="shMsg"></span></div>
+      <div class="hint">Con la clave puesta, los datos se guardan en tu hoja de Google y todos los dispositivos ven lo mismo. Sin conexión, se guardan en el móvil y se suben al volver la conexión.</div>
+    </div>
+    <div class="field">
       <label for="dataBox">Copia de seguridad de los datos</label>
       <textarea id="dataBox" rows="4" spellcheck="false" placeholder="Pulsa «Mostrar datos» para copiar, o pega aquí una copia y pulsa «Importar»."></textarea>
       <div class="row">
@@ -695,6 +704,7 @@ function setSync(text, cls) { const el = $("sync"); el.textContent = text; el.cl
 function persist() {
   state.updatedAt = Date.now();
   saveLocal();
+  if (sheetKey()) { setDirty(true); setSync("Guardando…"); clearTimeout(sheetTimer); sheetTimer = setTimeout(sheetPush, 800); return; }
   if (dbRef) { setSync("Guardando…"); clearTimeout(saveTimer); saveTimer = setTimeout(flush, 700); }
 }
 async function flush(retried) {
@@ -736,6 +746,54 @@ async function initCloud() {
     setSync("Guardado en este navegador", "warn");
   }
 }
+
+// ================= Google Sheets =================
+const SHEET_ID = "marina-2027";
+const SHEET_URL_DEFAULT = "https://script.google.com/macros/s/AKfycbxQxFgdSy7tlDXuw88j0vYPR6F7CpGcbEVf9yDCPNn5ZQ4PoQyrtRn2Qn8vXKy9HJaAJA/exec";
+const lsGet = k => { try { return localStorage.getItem(k) || ""; } catch (e) { return ""; } };
+const lsSet = (k, v) => { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch (e) {} };
+const sheetUrl = () => lsGet(LS_KEY + "-sheet-url") || SHEET_URL_DEFAULT;
+const sheetKey = () => lsGet(LS_KEY + "-sheet-key");
+const isDirty = () => lsGet(LS_KEY + "-dirty") === "1";
+const setDirty = v => lsSet(LS_KEY + "-dirty", v ? "1" : "");
+let sheetTimer = null, sheetBusy = false, sheetAgain = false, sheetPulling = false;
+async function sheetCall(body) {
+  const r = await fetch(sheetUrl(), { method: "POST", body: JSON.stringify(Object.assign({ k: sheetKey(), id: SHEET_ID }, body)) });
+  return r.json();
+}
+function sheetError(j) {
+  setSync(j && j.error === "clave" ? "Clave incorrecta · revísala en Ajustes" : "Error de Google Sheets · guardado en este dispositivo", "warn");
+}
+async function sheetPush() {
+  if (!sheetKey()) return;
+  if (sheetBusy) { sheetAgain = true; return; }
+  sheetBusy = true;
+  try {
+    const j = await sheetCall({ action: "save", state: JSON.parse(JSON.stringify(state)) });
+    if (j && j.ok) { setDirty(false); setSync("Guardado en Google Sheets", "ok"); } else sheetError(j);
+  } catch (e) { setSync("Sin conexión · guardado en el móvil, se subirá luego", "warn"); }
+  sheetBusy = false;
+  if (sheetAgain) { sheetAgain = false; sheetPush(); }
+}
+async function sheetPull(first) {
+  if (!sheetKey() || sheetBusy || sheetPulling) return;
+  if (isDirty()) { sheetPush(); return; }          // primero subir lo pendiente
+  sheetPulling = true;
+  try {
+    const j = await sheetCall({ action: "load" });
+    if (!j || !j.ok) { sheetError(j); sheetPulling = false; return j; }
+    if (j.state) {
+      const remote = normalize(j.state);
+      if (first && (state.updatedAt || 0) > (remote.updatedAt || 0)) { sheetPulling = false; await sheetPush(); return j; } // al conectar, gana el dispositivo con cambios más recientes
+      if (!isDirty() && JSON.stringify(remote) !== JSON.stringify(state)) { state = remote; saveLocal(); render(); }
+      setSync("Sincronizado con Google Sheets", "ok");
+    } else { await sheetPush(); }                  // hoja vacía: se suben los datos actuales
+    sheetPulling = false; return j;
+  } catch (e) { setSync("Sin conexión · guardado en el móvil", "warn"); sheetPulling = false; return null; }
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") sheetPull(); });
+window.addEventListener("online", () => { if (isDirty()) sheetPush(); else sheetPull(); });
+setInterval(() => { if (document.visibilityState === "visible") sheetPull(); }, 60000);
 
 // ================= Render =================
 function todayISO() { const d = new Date(); return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); }
@@ -1034,6 +1092,7 @@ $("holAdd").addEventListener("click", () => {
   $("holDate").value = ""; $("holName").value = ""; renderHol();
 });
 $("btnSettings").addEventListener("click", () => {
+  $("shUrl").value = sheetUrl(); $("shKey").value = sheetKey(); $("shMsg").textContent = sheetKey() ? "Conectado en este dispositivo." : "";
   const c = state.config;
   $("cfWorker").value = c.worker || ""; $("cfStart").value = c.start; $("cfEnd").value = c.end; $("cfAnnual").value = c.annualHours; $("cfVac").value = c.annualVac;
   $("cfDaily").value = c.maxDaily; $("cfWeekly").value = c.maxWeekly; $("cfFestwSep").checked = !!c.festwSeparate; $("cfWarnDaily").checked = c.warnDaily !== false; $("cfRef").value = c.refDate;
@@ -1087,6 +1146,18 @@ $("dataFile").addEventListener("change", e => {
   };
   rd.readAsText(f);
 });
+$("shConnect").addEventListener("click", async () => {
+  const u = $("shUrl").value.trim(), k = $("shKey").value.trim();
+  if (!/^https:\/\/script\.google\.com\/.+\/exec$/.test(u)) { $("shMsg").textContent = "El enlace debe empezar por https://script.google.com/ y acabar en /exec."; return; }
+  if (!k) { $("shMsg").textContent = "Escribe la clave."; $("shKey").focus(); return; }
+  lsSet(LS_KEY + "-sheet-url", u === SHEET_URL_DEFAULT ? "" : u); lsSet(LS_KEY + "-sheet-key", k);
+  $("shMsg").textContent = "Probando…";
+  const j = await sheetPull(true);
+  if (j && j.ok) $("shMsg").textContent = "Conectado. Los datos se guardan en Google Sheets.";
+  else if (j && j.error === "clave") { $("shMsg").textContent = "Clave incorrecta."; lsSet(LS_KEY + "-sheet-key", ""); }
+  else $("shMsg").textContent = "No se pudo conectar. Revisa el enlace (debe acabar en /exec) y la conexión.";
+});
+$("shOff").addEventListener("click", () => { lsSet(LS_KEY + "-sheet-key", ""); $("shKey").value = ""; $("shMsg").textContent = "Desconectado: este dispositivo guarda solo en local."; setSync("Guardado automáticamente en este navegador", "ok"); });
 let resetArmed = false;
 $("dataReset").addEventListener("click", () => {
   if (!resetArmed) { resetArmed = true; $("dataReset").textContent = "Pulsa otra vez para borrar"; $("dataMsg").textContent = "Se borrarán todos los días y ajustes."; return; }
@@ -1098,7 +1169,7 @@ if (window.claude) $("dataDownload").style.display = "none"; // el visor de Clau
 render();
 let cloudTried = false;
 function tryCloud() { if (cloudTried) return; if (window.claude && typeof window.claude.use === "function") { cloudTried = true; initCloud(); } }
-tryCloud();
+if (sheetKey()) { cloudTried = true; sheetPull(); } else tryCloud();
 setTimeout(() => { if (!cloudTried) { tryCloud(); if (!cloudTried) setSync("Guardado automáticamente en este navegador", "ok"); } }, 1500);
 </script>
 </body>
