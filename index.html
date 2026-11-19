@@ -1,0 +1,1102 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Control de horas y vacaciones 2027</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Layout: summary tiles → alerts → continuous week calendar (Mon–Sun + weekly total) → averages and monthly table. */
+:root{
+  --bg:#f3f6f4; --surface:#ffffff; --ink:#14201b; --muted:#5b6a64; --line:#d8e0dc; --soft:#eaf0ed;
+  --accent:#0d7a5b; --accent-ink:#ffffff; --accent-soft:#dff1e9; --past-bg:#f7e7a1;
+  --ok:#1d8048; --warn:#a86300; --err:#bd2f22; --info:#2b68a8;
+  --t-work:#0d7a5b; --t-festw:#c47300; --t-leave:#64748b; --t-rest:#8b9a94; --t-vac:#2b68a8; --t-fest:#8848b0; --t-comp:#21928f;
+  --f-display:"Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --f-body:"IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --r:10px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0e1412; --surface:#161f1c; --ink:#e6eeea; --muted:#92a49c; --line:#2a3833; --soft:#1d2925;
+    --accent:#3cc29a; --accent-ink:#04261b; --accent-soft:#143429; --past-bg:#5a4d1c;
+    --ok:#4cc27e; --warn:#e3a13b; --err:#f07163; --info:#6aa8eb;
+    --t-work:#3cc29a; --t-festw:#e3a13b; --t-leave:#94a3b8; --t-rest:#71827b; --t-vac:#6aa8eb; --t-fest:#b98ae0; --t-comp:#4fc4c0;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0e1412; --surface:#161f1c; --ink:#e6eeea; --muted:#92a49c; --line:#2a3833; --soft:#1d2925;
+  --accent:#3cc29a; --accent-ink:#04261b; --accent-soft:#143429; --past-bg:#5a4d1c;
+  --ok:#4cc27e; --warn:#e3a13b; --err:#f07163; --info:#6aa8eb;
+  --t-work:#3cc29a; --t-festw:#e3a13b; --t-leave:#94a3b8; --t-rest:#71827b; --t-vac:#6aa8eb; --t-fest:#b98ae0; --t-comp:#4fc4c0;
+  color-scheme: dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.45}
+.wrap{max-width:1180px;margin:0 auto;padding:20px 16px 48px;display:flex;flex-direction:column;gap:18px}
+h1,h2,h3{font-family:var(--f-display);margin:0;text-wrap:balance;letter-spacing:-0.01em}
+h1{font-size:26px;line-height:1.15}
+h2{font-size:18px}
+h3{font-size:15px}
+.num,td,.tile .big{font-variant-numeric:tabular-nums}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+header.top{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;justify-content:space-between}
+.sub{color:var(--muted);font-size:14px;margin-top:4px}
+.actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:7px 12px;font-weight:500}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.danger{color:var(--err)}
+.btn.small{padding:4px 9px;font-size:13px}
+.sync{font-size:12.5px;color:var(--muted);display:inline-flex;align-items:center;gap:6px}
+.sync::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.sync.ok::before{background:var(--ok)} .sync.warn::before{background:var(--warn)}
+
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+.panel-head{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:12px}
+
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px;display:flex;flex-direction:column;gap:4px;border-top:3px solid var(--line)}
+.tile.ok{border-top-color:var(--ok)} .tile.warn{border-top-color:var(--warn)} .tile.err{border-top-color:var(--err)} .tile.info{border-top-color:var(--info)}
+.tile .lbl{font-size:12.5px;color:var(--muted);font-weight:500;text-transform:uppercase;letter-spacing:.04em}
+.tile .big{font-family:var(--f-display);font-size:28px;font-weight:700;line-height:1.1}
+.tile .big small{font-size:15px;font-weight:600;color:var(--muted)}
+.tile .note{font-size:13px;color:var(--muted)}
+.bar{position:relative;height:8px;border-radius:5px;background:var(--soft);margin-top:6px;overflow:visible}
+.bar > i{position:absolute;left:0;top:0;bottom:0;border-radius:5px;background:var(--accent)}
+.bar > b{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--ink);opacity:.55}
+.pill{display:inline-block;font-size:12px;font-weight:600;padding:2px 8px;border-radius:999px;background:var(--soft);color:var(--muted)}
+.pill.ok{background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok)}
+.pill.warn{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
+.pill.err{background:color-mix(in srgb,var(--err) 15%,transparent);color:var(--err)}
+
+.alerts{display:flex;flex-direction:column;gap:8px}
+.alerts[hidden]{display:none}
+.panel.folded .panel-head{margin-bottom:0}
+.alert{display:grid;grid-template-columns:auto 1fr;gap:10px;padding:11px 12px;border:1px solid var(--line);border-left:4px solid var(--info);border-radius:8px;background:var(--surface)}
+.alert.err{border-left-color:var(--err)} .alert.warn{border-left-color:var(--warn)} .alert.ok{border-left-color:var(--ok)}
+.alert .sev{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding-top:2px;min-width:56px;color:var(--info)}
+.alert.err .sev{color:var(--err)} .alert.warn .sev{color:var(--warn)} .alert.ok .sev{color:var(--ok)}
+.alert .t{font-weight:600}
+.alert .b{font-size:14px;color:var(--ink);margin-top:2px}
+.alert .basis{font-size:12.5px;color:var(--muted);margin-top:4px}
+
+.legend{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:12.5px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.legend i{width:11px;height:11px;border-radius:3px;background:var(--tc)}
+.cal-scroll{overflow-x:auto}
+.months{display:flex;flex-direction:column;gap:22px}
+.month-head{display:flex;flex-wrap:wrap;gap:4px 14px;justify-content:space-between;align-items:baseline;padding-bottom:6px;margin-bottom:8px;border-bottom:2px solid var(--accent)}
+.month-head h3{font-size:17px;text-transform:capitalize}
+.month-head .ms{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.cell.blank{border:none;background:transparent;min-height:0}
+.wk .m.sp{font-size:11px;white-space:nowrap}
+.cal{display:grid;grid-template-columns:repeat(7,minmax(46px,1fr)) minmax(70px,92px);gap:4px;min-width:420px}
+.cal .dh{font-size:12px;font-weight:600;color:var(--muted);text-align:center;padding:2px 0}
+.cell{position:relative;min-height:60px;border-radius:7px;border:1px solid var(--line);background:var(--surface);padding:4px 5px;text-align:left;display:flex;flex-direction:column;justify-content:space-between;gap:2px;--tc:transparent}
+.cell.in{background:color-mix(in srgb,var(--tc) 13%,var(--surface));border-left:4px solid var(--tc)}
+.cell.none{border-style:dashed;border-left-width:1px}
+.cell.none.past{border-color:var(--warn)}
+.cell.out{opacity:.35;border-style:dotted;background:transparent;cursor:default}
+.cell.today{box-shadow:0 0 0 2px var(--ink)}
+.cell.future .h{opacity:.75}
+/* Días pasados: fondo amarillo suave detrás de la casilla (la casilla mantiene su color) */
+.cal{gap:0 !important}
+.cal .dh{padding:2px 0 4px}
+.slot{padding:2px;display:flex;min-width:0}
+.slot > *{flex:1 1 auto;min-width:0}
+.slot.past{background:var(--past-bg)}
+.cell .dn{font-size:12px;font-weight:600;line-height:1}
+.cell .dn em{font-style:normal;font-weight:500;color:var(--muted);margin-left:3px}
+.cell .h{font-size:14px;font-weight:600;font-variant-numeric:tabular-nums}
+.cell .ty{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cell .dot{position:absolute;top:5px;right:5px;width:6px;height:6px;border-radius:50%;background:var(--t-fest)}
+.cell .flag{position:absolute;bottom:4px;right:5px;font-size:10px;font-weight:700;color:var(--err)}
+button.cell.in:hover{border-color:var(--accent)}
+.wk{border-radius:7px;background:var(--soft);padding:5px 7px;display:flex;flex-direction:column;justify-content:center;gap:2px;font-size:12px}
+.wk .h{font-size:14px;font-weight:700;font-variant-numeric:tabular-nums}
+.wk.over{background:color-mix(in srgb,var(--warn) 16%,var(--soft))}
+.wk .m{color:var(--muted)}
+
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px}
+.kv{display:grid;grid-template-columns:1fr auto;gap:6px 14px;font-size:14px}
+.kv dt{color:var(--muted)} .kv dd{margin:0;font-weight:600;text-align:right;font-variant-numeric:tabular-nums}
+.tbl-wrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{padding:7px 9px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.03em}
+tfoot td{font-weight:700;border-bottom:none}
+.pos{color:var(--warn)} .neg{color:var(--muted)}
+
+.criteria{font-size:14px;color:var(--ink)}
+.criteria ul{margin:6px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
+details summary{cursor:pointer;font-weight:600}
+details > div{margin-top:10px;font-size:14px;color:var(--ink);max-width:75ch}
+details p{margin:0 0 8px}
+
+/* Modal */
+.ov{position:fixed;inset:0;background:rgba(8,14,12,.55);display:none;align-items:flex-end;justify-content:center;z-index:20;padding:12px}
+.ov.open{display:flex}
+@media (min-width:640px){.ov{align-items:center}}
+.modal{background:var(--surface);color:var(--ink);border-radius:14px;border:1px solid var(--line);width:100%;max-width:520px;max-height:92vh;overflow:auto;padding:18px;display:flex;flex-direction:column;gap:14px}
+.modal header{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.xbtn{border:none;background:transparent;font-size:22px;line-height:1;padding:2px 6px;color:var(--muted)}
+.types{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:6px}
+.types button{border:1px solid var(--line);border-left:4px solid var(--tc);border-radius:8px;background:var(--surface);padding:8px 10px;text-align:left;font-size:14px}
+.types button[aria-pressed="true"]{background:color-mix(in srgb,var(--tc) 18%,var(--surface));border-color:var(--tc);font-weight:600}
+.field{display:flex;flex-direction:column;gap:5px}
+.field label{font-size:13px;font-weight:600;color:var(--muted)}
+.field input,.field select,.field textarea{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:8px 10px;width:100%;font-size:16px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chips button{border:1px solid var(--line);background:var(--soft);border-radius:999px;padding:4px 11px;font-size:13px;font-variant-numeric:tabular-nums}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.row.end{justify-content:flex-end}
+.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.hint{font-size:13px;color:var(--muted)}
+.hol-list{display:flex;flex-direction:column;gap:6px}
+.hol-list .item{display:flex;gap:8px;align-items:center;justify-content:space-between;border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:14px}
+.wd-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.wd-grid .wd{display:flex;flex-direction:column;gap:4px;align-items:center;font-size:12.5px}
+.wd-grid input{width:100%;text-align:center;border:1px solid var(--line);background:var(--bg);border-radius:6px;padding:6px 2px}
+.check{display:flex;gap:8px;align-items:flex-start;font-size:14px}
+.empty-note{font-size:14px;color:var(--muted)}
+.dh .sm{display:none}
+@media (max-width:520px){
+  .wrap{padding:14px 10px 40px;gap:14px}
+  .panel{padding:12px}
+  h1{font-size:21px}
+  .actions{width:100%}
+  .actions .btn{flex:1 1 auto;text-align:center}
+  .sync{width:100%}
+  .tiles{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .tile{padding:10px}
+  .tile .big{font-size:22px}
+  .tile .lbl{font-size:11px}
+  .tile .note{font-size:12px}
+  .cal{min-width:0;grid-template-columns:repeat(7,minmax(0,1fr)) 40px;gap:3px}
+  .cal .dh{font-size:11px}
+  .dh .lg{display:none} .dh .sm{display:inline}
+  .cell{min-height:48px;padding:3px 3px 3px 4px;border-radius:6px}
+  .cell.in{border-left-width:3px}
+  .cell .dn{font-size:11px}
+  .cell .h{font-size:12.5px;letter-spacing:-.02em}
+  .cell .h small,.wk .h small{display:none}
+  .cell .ty{display:none}
+  .cell .dot{top:4px;right:3px;width:5px;height:5px}
+  .wk{padding:3px 2px;align-items:center;border-radius:6px}
+  .wk .h{font-size:12.5px}
+  .wk .m{display:none}
+  .month-head h3{font-size:16px}
+  .month-head .ms{font-size:12px}
+  .legend{font-size:11.5px;gap:4px 10px}
+  .alert{grid-template-columns:1fr;gap:4px}
+  .modal{padding:14px;border-radius:14px 14px 10px 10px}
+  .types{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .row.end .btn{flex:1 1 auto}
+  .kv{font-size:13.5px}
+}
+@media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1 id="appTitle" data-base="Control de horas y vacaciones 2027">Control de horas y vacaciones 2027</h1>
+      <div class="sub" id="subtitle"></div>
+    </div>
+    <div class="actions">
+      <span class="sync" id="sync">Cargando…</span>
+      <button class="btn" id="btnFill" type="button">Rellenar varios días</button>
+      <button class="btn" id="btnSettings" type="button">Ajustes y festivos</button>
+    </div>
+  </header>
+
+  <section class="tiles" id="tiles" aria-label="Resumen"></section>
+
+  <section class="panel" aria-labelledby="hAlerts">
+    <div class="panel-head"><h2 id="hAlerts">Alertas y comprobaciones</h2><div class="row"><span id="alertCount"></span><button class="btn small" type="button" id="alertToggle" aria-expanded="true" aria-controls="alerts">Plegar</button></div></div>
+    <div class="alerts" id="alerts"></div>
+  </section>
+
+  <section class="panel" aria-labelledby="hCal">
+    <div class="panel-head">
+      <h2 id="hCal">Calendario</h2>
+      <div class="legend" id="legend"></div>
+    </div>
+    <p class="hint" style="margin:0 0 10px">Pulsa un día para indicar si has trabajado (y cuántas horas), si es descanso, vacaciones, festivo… Los días futuros sirven para planificar.</p>
+    <div class="months" id="cal"></div>
+  </section>
+
+  <section class="grid2">
+    <div class="panel">
+      <div class="panel-head"><h2>Medias</h2></div>
+      <div class="grid2" style="gap:16px">
+        <div><h3 style="margin-bottom:8px">Lo trabajado hasta hoy</h3><dl class="kv" id="avgDone"></dl></div>
+        <div><h3 style="margin-bottom:8px">Lo que queda hasta el final</h3><dl class="kv" id="avgLeft"></dl></div>
+      </div>
+    </div>
+    <div class="panel criteria">
+      <div class="panel-head"><h2>Criterios del contrato</h2></div>
+      <div id="criteria"></div>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="hMonth">
+    <div class="panel-head"><h2 id="hMonth">Por mes</h2></div>
+    <div class="tbl-wrap"><table id="monthTbl"></table></div>
+    <p class="hint" style="margin:10px 0 0">«Referencia» reparte el máximo del periodo entre los meses según los días computables (sin vacaciones, festivos ni días compensatorios). Es orientativa: el límite legal es el total del periodo y la media de 40 h semanales.</p>
+  </section>
+
+  <section class="panel">
+    <details>
+      <summary>Cómo se calcula</summary>
+      <div>
+        <p><strong>Máximo de horas del periodo</strong> = jornada anual × días del periodo ÷ días del año. Con 1.785 h y 102 días (21/9 – 31/12/2026) salen unas 498,8 h. Son horas de trabajo efectivo: las vacaciones y los festivos ya están descontados de las 1.785 h, por eso no suman ni restan.</p>
+        <p><strong>Vacaciones del periodo</strong> = 30 días naturales × días del periodo ÷ días del año ≈ 8,4 días naturales. Se marcan como días naturales (incluidos sábados y domingos si caen dentro).</p>
+        <p><strong>Días computables</strong> = días del periodo menos vacaciones, festivos no trabajados y descansos compensatorios. Sirven para repartir el máximo en el tiempo y saber cuánto «tocaría» llevar a una fecha.</p>
+        <p><strong>Ritmo</strong>: compara lo que llevas con la parte proporcional del máximo según los días computables transcurridos. Las vacaciones que aún no has marcado se reservan en los días que quedan, como si ya estuvieran puestas, para que el ritmo tenga en cuenta que esos días no trabajarás. Ir por debajo no te perjudica: el máximo es un tope, no una cantidad que debas a la empresa, y no puede compensarse con vacaciones.</p>
+        <p><strong>Descanso semanal</strong>: se comprueba que en cada bloque de 14 días seguidos haya al menos 3 días sin trabajar (1,5 días por semana, acumulables hasta 14 días). Es una aproximación: la ley exige que ese día y medio sea ininterrumpido.</p>
+        <p><strong>Proyección</strong>: horas hechas + horas que ya has planificado + (media por día computable × días futuros sin asignar).</p>
+        <p class="hint">Esta herramienta es orientativa y no sustituye el asesoramiento de un sindicato o abogado laboralista.</p>
+      </div>
+    </details>
+  </section>
+</div>
+
+<!-- Editor de día -->
+<div class="ov" id="ovDay" role="dialog" aria-modal="true" aria-labelledby="dayTitle">
+  <div class="modal">
+    <header>
+      <div><h2 id="dayTitle"></h2><div class="sub" id="dayMeta"></div></div>
+      <button class="xbtn" type="button" data-close aria-label="Cerrar">×</button>
+    </header>
+    <div class="types" id="dayTypes"></div>
+    <div class="field" id="hoursField">
+      <label for="dayHours">Horas trabajadas</label>
+      <input id="dayHours" type="number" inputmode="decimal" min="0" max="24" step="0.25" placeholder="Ej. 8">
+      <div class="chips" id="hourChips"></div>
+      <div class="hint" id="hoursHint"></div>
+    </div>
+    <div class="field">
+      <label for="dayNote">Nota (opcional)</label>
+      <input id="dayNote" type="text" maxlength="140" placeholder="Ej. turno de tarde, guardia…">
+    </div>
+    <div class="row end">
+      <button class="btn danger" type="button" id="dayClear">Quitar</button>
+      <button class="btn" type="button" id="daySave">Guardar</button>
+      <button class="btn primary" type="button" id="daySaveNext">Guardar y siguiente día</button>
+    </div>
+  </div>
+</div>
+
+<!-- Rellenar varios días -->
+<div class="ov" id="ovFill" role="dialog" aria-modal="true" aria-labelledby="fillTitle">
+  <div class="modal">
+    <header>
+      <div><h2 id="fillTitle">Rellenar varios días</h2><div class="sub">Aplica un horario semanal a un rango de fechas.</div></div>
+      <button class="xbtn" type="button" data-close aria-label="Cerrar">×</button>
+    </header>
+    <div class="form-grid">
+      <div class="field"><label for="fillFrom">Desde</label><input id="fillFrom" type="date"></div>
+      <div class="field"><label for="fillTo">Hasta</label><input id="fillTo" type="date"></div>
+    </div>
+    <div class="field">
+      <label>Horas por día de la semana (0 = no trabaja)</label>
+      <div class="wd-grid" id="fillWd"></div>
+    </div>
+    <label class="check"><input type="checkbox" id="fillOnlyEmpty" checked> <span>Solo días sin asignar (no toca lo que ya has marcado ni los festivos)</span></label>
+    <label class="check"><input type="checkbox" id="fillRest" checked> <span>Marcar como descanso los días con 0 horas</span></label>
+    <div class="hint" id="fillPreview"></div>
+    <div class="row end">
+      <button class="btn" type="button" data-close>Cancelar</button>
+      <button class="btn primary" type="button" id="fillApply">Aplicar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Ajustes -->
+<div class="ov" id="ovSet" role="dialog" aria-modal="true" aria-labelledby="setTitle">
+  <div class="modal" style="max-width:640px">
+    <header>
+      <div><h2 id="setTitle">Ajustes y festivos</h2><div class="sub">Valores del contrato y del convenio estatal de oficinas de farmacia.</div></div>
+      <button class="xbtn" type="button" data-close aria-label="Cerrar">×</button>
+    </header>
+    <div class="field"><label for="cfWorker">Nombre del trabajador/a</label><input id="cfWorker" type="text" maxlength="60" placeholder="Ej. Marina Mas" autocomplete="name"></div>
+    <div class="form-grid">
+      <div class="field"><label for="cfStart">Inicio del contrato / periodo</label><input id="cfStart" type="date"></div>
+      <div class="field"><label for="cfEnd">Fin del periodo</label><input id="cfEnd" type="date"></div>
+      <div class="field"><label for="cfAnnual">Jornada anual (h)</label><input id="cfAnnual" type="number" min="0" step="1"></div>
+      <div class="field"><label for="cfVac">Vacaciones anuales (días naturales)</label><input id="cfVac" type="number" min="0" step="1"></div>
+      <div class="field"><label for="cfDaily">Máx. horas al día (para el aviso)</label><input id="cfDaily" type="number" min="0" step="0.5"></div>
+      <div class="field"><label for="cfWeekly">Máx. media semanal (h)</label><input id="cfWeekly" type="number" min="0" step="0.5"></div>
+      <div class="field"><label for="cfRef">Calcular a fecha de (vacío = hoy)</label><input id="cfRef" type="date"></div>
+    </div>
+    <label class="check"><input type="checkbox" id="cfFestwSep"> <span><strong>Los festivos trabajados se pagan aparte</strong> y no cuentan para las horas de la jornada (tampoco generan día compensatorio).</span></label>
+    <label class="check"><input type="checkbox" id="cfWarnDaily"> <span><strong>Avisar de días con más horas que el máximo diario</strong> indicado arriba.</span></label>
+    <div class="field">
+      <label>Festivos del periodo</label>
+      <div class="hol-list" id="holList"></div>
+      <div class="row">
+        <input id="holDate" type="date" aria-label="Fecha del festivo" style="border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:7px 9px">
+        <input id="holName" type="text" placeholder="Nombre (ej. festivo local)" aria-label="Nombre del festivo" style="flex:1;min-width:140px;border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:7px 9px">
+        <button class="btn" type="button" id="holAdd">Añadir</button>
+      </div>
+      <div class="hint">Añade los festivos del periodo (nacionales, de Cataluña y locales). También puedes marcar un día como «Festivo» directamente en el calendario.</div>
+    </div>
+    <div class="field">
+      <label for="dataBox">Copia de seguridad de los datos</label>
+      <textarea id="dataBox" rows="4" spellcheck="false" placeholder="Pulsa «Mostrar datos» para copiar, o pega aquí una copia y pulsa «Importar»."></textarea>
+      <div class="row">
+        <button class="btn small" type="button" id="dataShow">Mostrar datos</button>
+        <button class="btn small" type="button" id="dataCopy">Copiar</button>
+        <button class="btn small" type="button" id="dataImport">Importar</button>
+        <button class="btn small" type="button" id="dataDownload">Descargar copia (.json)</button>
+        <label class="btn small" for="dataFile" style="display:inline-block">Cargar copia desde archivo</label>
+        <input id="dataFile" type="file" accept=".json,application/json" style="position:absolute;left:-9999px">
+        <button class="btn small danger" type="button" id="dataReset">Borrar todo</button>
+        <span class="hint" id="dataMsg"></span>
+      </div>
+    </div>
+    <div class="row end">
+      <button class="btn" type="button" data-close>Cancelar</button>
+      <button class="btn primary" type="button" id="setSave">Guardar ajustes</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/*LOGIC-START*/
+const DAY = 86400000;
+const pad = n => String(n).padStart(2, "0");
+const parseISO = s => { const [y, m, d] = s.split("-").map(Number); return Date.UTC(y, m - 1, d); };
+const toISO = t => { const d = new Date(t); return d.getUTCFullYear() + "-" + pad(d.getUTCMonth() + 1) + "-" + pad(d.getUTCDate()); };
+const addDays = (s, n) => toISO(parseISO(s) + n * DAY);
+const dow = s => (new Date(parseISO(s)).getUTCDay() + 6) % 7; // 0 = lunes
+const isLeap = y => (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+const isISO = s => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
+function listDays(a, b) { const out = []; for (let t = parseISO(a); t <= parseISO(b); t += DAY) out.push(toISO(t)); return out; }
+
+const MONTHS = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+const MON3 = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+const DOWN = ["lunes","martes","miércoles","jueves","viernes","sábado","domingo"];
+const fmtShort = s => s.slice(8, 10) + "/" + s.slice(5, 7);
+const fmtLong = s => DOWN[dow(s)] + ", " + Number(s.slice(8, 10)) + " de " + MONTHS[Number(s.slice(5, 7)) - 1];
+const fmtH = (x, dec = 1) => (Math.round(x * Math.pow(10, dec)) / Math.pow(10, dec)).toLocaleString("es-ES", { minimumFractionDigits: 0, maximumFractionDigits: dec });
+const fmtSigned = x => (x > 0.05 ? "+" : x < -0.05 ? "−" : "") + fmtH(Math.abs(x));
+
+const TYPES = {
+  work:  { label: "Trabajo", hours: true, color: "--t-work" },
+  festw: { label: "Festivo trabajado", hours: true, color: "--t-festw" },
+  leave: { label: "Permiso / baja", hours: true, color: "--t-leave" },
+  rest:  { label: "Descanso", hours: false, color: "--t-rest" },
+  vac:   { label: "Vacaciones", hours: false, color: "--t-vac" },
+  fest:  { label: "Festivo", hours: false, color: "--t-fest" },
+  comp:  { label: "Desc. compensatorio", hours: false, color: "--t-comp" },
+  none:  { label: "Sin asignar", hours: false, color: "" }
+};
+const OFF_PACE = new Set(["vac", "fest", "comp"]);   // fuera del reparto de horas
+const WORKING = new Set(["work", "festw"]);           // días con trabajo efectivo
+
+function defaultState() {
+  return {
+    v: 2, updatedAt: 0,
+    config: {
+      start: "2027-01-01", end: "2027-12-31",
+      annualHours: 1785, annualVac: 30, maxDaily: 9, maxWeekly: 40, refDate: "", warnDaily: false, festwSeparate: true, alertsCollapsed: true, worker: "",
+      holidays: []
+    },
+    days: {}
+  };
+}
+
+function normalize(s) {
+  const d = defaultState();
+  if (!s || typeof s !== "object") return d;
+  const c = Object.assign({}, d.config, s.config || {});
+  delete c.companyClaim;
+  if (!isISO(c.start)) c.start = d.config.start;
+  if (!isISO(c.end) || c.end < c.start) c.end = d.config.end < c.start ? c.start : d.config.end;
+  ["annualHours","annualVac","maxDaily","maxWeekly"].forEach(k => { const v = Number(c[k]); c[k] = isFinite(v) && v >= 0 ? v : d.config[k]; });
+  if (!isISO(c.refDate)) c.refDate = "";
+  c.warnDaily = c.warnDaily !== false;
+  c.festwSeparate = c.festwSeparate === true;
+  c.alertsCollapsed = c.alertsCollapsed !== false; // plegado por defecto
+  c.worker = typeof c.worker === "string" ? c.worker.slice(0, 60) : "";
+  c.holidays = Array.isArray(c.holidays) ? c.holidays.filter(h => h && isISO(h.d)).map(h => ({ d: h.d, n: String(h.n || "Festivo").slice(0, 60) })) : d.config.holidays;
+  const days = {};
+  if (s.days && typeof s.days === "object") {
+    for (const k of Object.keys(s.days)) {
+      const e = s.days[k];
+      if (!isISO(k) || !e || !TYPES[e.t] || e.t === "none") continue;
+      const o = { t: e.t };
+      if (TYPES[e.t].hours) { const h = Number(e.h); o.h = isFinite(h) && h >= 0 ? Math.min(h, 24) : 0; }
+      if (e.n) o.n = String(e.n).slice(0, 140);
+      days[k] = o;
+    }
+  }
+  if (!(Number(s.v) >= 2)) {
+    const OLD = ["2026-10-12","2026-11-01","2026-12-06","2026-12-08","2026-12-25","2026-12-26"];
+    const ds = c.holidays.map(h => h.d).sort();
+    if (ds.length === OLD.length && ds.every((d, i) => d === OLD[i])) c.holidays = [];
+  }
+  return { v: 2, updatedAt: Number(s.updatedAt) || 0, config: c, days };
+}
+
+function typeOf(st, d, hol) {
+  const e = st.days[d];
+  if (e && TYPES[e.t]) return e.t;
+  return hol.has(d) ? "fest" : "none";
+}
+
+function listDates(arr, max = 6) {
+  const s = arr.slice(0, max).map(fmtShort).join(", ");
+  return arr.length > max ? s + " y " + (arr.length - max) + " más" : s;
+}
+function rangesOf(dates) {
+  const sorted = [...new Set(dates)].sort(); const out = [];
+  for (const d of sorted) {
+    const last = out[out.length - 1];
+    if (last && addDays(last[1], 1) === d) last[1] = d; else out.push([d, d]);
+  }
+  return out;
+}
+
+function compute(st, refISO) {
+  const c = st.config;
+  const days = listDays(c.start, c.end);
+  const N = days.length;
+  const yd = isLeap(Number(c.start.slice(0, 4))) ? 366 : 365;
+  const target = c.annualHours * N / yd;
+  const vacEnt = c.annualVac * N / yd;
+  const hol = new Map(c.holidays.map(h => [h.d, h.n]));
+
+  const rows = days.map(d => {
+    const t = typeOf(st, d, hol);
+    const e = st.days[d];
+    const hraw = TYPES[t].hours && e ? (Number(e.h) || 0) : 0;
+    const sep = t === "festw" && c.festwSeparate;           // festivo pagado aparte: no computa como jornada
+    return { d, t, h: sep ? 0 : hraw, hx: sep ? hraw : 0, hraw, past: d <= refISO, hol: hol.get(d) || "", note: e && e.n ? e.n : "" };
+  });
+
+  const sum = (arr, f) => arr.reduce((a, r) => a + f(r), 0);
+  const past = rows.filter(r => r.past), fut = rows.filter(r => !r.past);
+  const worked = sum(past, r => r.h);
+  const future = sum(fut, r => r.h);
+  const totalPlanned = worked + future;
+  // Vacaciones que aún no están marcadas: se reservan en los días futuros para que no cuenten como días de trabajo
+  const vacAssigned = rows.filter(r => r.t === "vac").length;
+  const futureCompCand = fut.filter(r => !OFF_PACE.has(r.t)).length;
+  const vacReserve = Math.min(Math.max(0, vacEnt - vacAssigned), futureCompCand);
+  const reserveShare = futureCompCand ? vacReserve / futureCompCand : 0;
+  const compTotal = rows.filter(r => !OFF_PACE.has(r.t)).length - vacReserve;
+  const compElapsed = past.filter(r => !OFF_PACE.has(r.t)).length;
+  const expected = compTotal ? target * compElapsed / compTotal : 0;
+  const diff = worked - expected;
+  const remaining = target - worked;
+  const remCompDays = compTotal - compElapsed;
+  const futureRest = fut.filter(r => r.t === "rest").length;
+  const futureCand = fut.filter(r => !OFF_PACE.has(r.t) && r.t !== "rest").length;
+  const extraRest = Math.max(0, remCompDays * 1.5 / 7 - futureRest);
+  const workDaysAvail = Math.max(0, futureCand - extraRest - vacReserve);
+  const remPos = Math.max(0, remaining);
+  const needWeek = remCompDays > 0 ? remPos / (remCompDays / 7) : 0;
+  const needMonth = remCompDays > 0 ? remPos / (remCompDays / 30.4375) : 0;
+  const needDay = workDaysAvail > 0 ? remPos / workDaysAvail : 0;
+  const workedDays = past.filter(r => r.h > 0).length;
+  const noVacElapsed = past.filter(r => r.t !== "vac").length; // la media de 40 h se mide sin las semanas de vacaciones
+  const avgWeek = noVacElapsed ? worked / (noVacElapsed / 7) : 0;
+  const avgMonth = noVacElapsed ? worked / (noVacElapsed / 30.4375) : 0;
+  const avgDay = workedDays ? worked / workedDays : 0;
+  const futureUnassigned = fut.filter(r => r.t === "none").length;
+  const ratePerComp = compElapsed ? worked / compElapsed : 0;
+  const projection = worked + future + ratePerComp * Math.max(0, futureUnassigned - vacReserve);
+  const vacPast = past.filter(r => r.t === "vac").length;
+  const festw = rows.filter(r => r.t === "festw");
+  const festwHours = sum(festw, r => r.hraw);
+  const compDays = rows.filter(r => r.t === "comp").length;
+  const pastUnassigned = past.filter(r => r.t === "none");
+  const restRemaining = rows.filter(r => r.t === "rest").length;
+
+  // Semanas (lunes a domingo)
+  const rowMap = new Map(rows.map(r => [r.d, r]));
+  const weeks = [];
+  const firstMon = addDays(c.start, -dow(c.start));
+  const lastSun = addDays(c.end, 6 - dow(c.end));
+  for (let w = firstMon; w <= lastSun; w = addDays(w, 7)) {
+    const cells = []; let hrs = 0, inDays = 0, comp = 0, wd = 0, vac = 0;
+    for (let i = 0; i < 7; i++) {
+      const d = addDays(w, i); const r = rowMap.get(d) || null;
+      cells.push({ d, r });
+      if (r) { inDays++; hrs += r.h; if (!OFF_PACE.has(r.t)) comp++; if (r.h > 0) wd++; if (r.t === "vac") vac++; }
+    }
+    const limit = c.maxWeekly * (inDays - vac) / 7;
+    weeks.push({ start: w, cells, hrs, inDays, comp, wd, limit, over: hrs > limit + 0.01 && hrs > 0 });
+  }
+
+  // Meses
+  const mm = new Map();
+  for (const r of rows) {
+    const k = r.d.slice(0, 7);
+    if (!mm.has(k)) mm.set(k, { k, days: 0, worked: 0, planned: 0, workedDays: 0, comp: 0, compPast: 0, vac: 0 });
+    const m = mm.get(k); m.days++;
+    if (r.past) { m.worked += r.h; if (r.h > 0) m.workedDays++; } else m.planned += r.h;
+    if (!OFF_PACE.has(r.t)) { m.comp += r.past ? 1 : 1 - reserveShare; if (r.past) m.compPast++; }
+    if (r.t === "vac") m.vac++;
+  }
+  const months = [...mm.values()].map(m => Object.assign(m, {
+    ref: compTotal ? target * m.comp / compTotal : 0,
+    avgWeek: m.compPast ? m.worked / (m.compPast / 7) : null,
+    avgDay: m.workedDays ? m.worked / m.workedDays : null
+  }));
+
+  // ------- Alertas -------
+  const A = [];
+  const add = (sev, title, body, basis) => A.push({ sev, title, body, basis });
+
+  if (pastUnassigned.length) {
+    add("warn", pastUnassigned.length + (pastUnassigned.length === 1 ? " día pasado sin registrar" : " días pasados sin registrar"),
+      "Márcalos como trabajo (con horas), descanso, vacaciones… para que los cálculos sean exactos: " + listDates(pastUnassigned.map(r => r.d)) + ".",
+      "");
+  }
+
+  if (worked > target + 0.05) {
+    add("err", "Ya has superado el máximo de horas del periodo",
+      "Llevas " + fmtH(worked) + " h y el máximo hasta el " + fmtShort(c.end) + " es " + fmtH(target) + " h. Las " + fmtH(worked - target) + " h de más son horas extra: deben pagarse según las tablas del convenio o compensarse con descanso (1 h 45 min por hora en día laborable, 2 h en festivo), a elegir de mutuo acuerdo.",
+      "Contrato, cláusula segunda · Convenio estatal de oficinas de farmacia, arts. 20 y 24");
+  } else if (totalPlanned > target + 0.05) {
+    add("warn", "Lo que tienes planificado supera el máximo",
+      "Sumando lo hecho (" + fmtH(worked) + " h) y lo planificado (" + fmtH(future) + " h) llegas a " + fmtH(totalPlanned) + " h, " + fmtH(totalPlanned - target) + " h por encima del máximo (" + fmtH(target) + " h). Ese exceso serían horas extra, que se pagan o se compensan con descanso.",
+      "Convenio estatal de oficinas de farmacia, art. 24");
+  } else if (projection > target * 1.02 && compElapsed > 0) {
+    add("warn", "A este ritmo acabarías por encima del máximo",
+      "Si sigues al ritmo actual terminarías con unas " + fmtH(projection) + " h, unas " + fmtH(projection - target) + " h por encima del máximo de " + fmtH(target) + " h. El exceso serían horas extra.",
+      "Contrato, cláusula segunda · Convenio, art. 24");
+  }
+
+  if (noVacElapsed >= 7 && avgWeek > c.maxWeekly + 0.05) {
+    add("warn", "Tu media semanal supera las " + fmtH(c.maxWeekly) + " h",
+      "Hasta hoy llevas una media de " + fmtH(avgWeek) + " h por semana. El contrato fija un máximo de " + fmtH(c.maxWeekly) + " h semanales de media: si se mantiene, acabarás haciendo horas extra.",
+      "Contrato, cláusula segunda · Art. 34.1 del Estatuto de los Trabajadores");
+  }
+  const overWeeks = weeks.filter(w => w.over && w.inDays === 7 && w.cells.every(x => x.r && x.r.t !== "none"));
+  if (overWeeks.length) {
+    add("info", overWeeks.length + (overWeeks.length === 1 ? " semana" : " semanas") + " por encima de " + fmtH(c.maxWeekly) + " h",
+      "Semanas que empiezan el " + listDates(overWeeks.map(w => w.start)) + ". Es posible si otras semanas se hacen menos horas (cuenta la media), pero vigila que la media no supere el límite.",
+      "Contrato, cláusula segunda");
+  }
+
+  const longDays = c.warnDaily ? rows.filter(r => r.hraw > c.maxDaily + 0.001) : [];
+  if (longDays.length) {
+    add("warn", longDays.length + (longDays.length === 1 ? " día" : " días") + " con más de " + fmtH(c.maxDaily) + " h",
+      "Días: " + listDates(longDays.map(r => r.d)) + ". El Estatuto limita la jornada ordinaria a 9 h diarias, salvo que el convenio o un acuerdo establezcan otra distribución, respetando siempre 12 h de descanso entre jornadas.",
+      "Art. 34.3 del Estatuto de los Trabajadores");
+  }
+
+  // Descanso semanal: ventanas de 14 días con menos de 3 días sin trabajo
+  const badRest = [];
+  for (let i = 0; i + 14 <= rows.length; i++) {
+    const win = rows.slice(i, i + 14);
+    if (win.some(r => r.t === "none")) continue;
+    const off = win.filter(r => !WORKING.has(r.t)).length;
+    if (off < 3) win.forEach(r => badRest.push(r.d));
+  }
+  if (badRest.length) {
+    const rg = rangesOf(badRest).map(([a, b]) => "del " + fmtShort(a) + " al " + fmtShort(b));
+    add("err", "Falta descanso semanal",
+      rg.slice(0, 3).join("; ").replace(/^d/, "D") + (rg.length > 3 ? " (y otros periodos)" : "") + ": hay bloques de 14 días con menos de 3 días libres. La ley garantiza día y medio de descanso ininterrumpido por semana (acumulable en periodos de hasta 14 días).",
+      "Art. 37.1 del Estatuto de los Trabajadores");
+  }
+
+  // Vacaciones
+  const vacFloor = Math.floor(vacEnt + 1e-9), vacCeil = Math.ceil(vacEnt - 1e-9);
+  if (vacAssigned < vacFloor) {
+    add("warn", "Te faltan " + (vacFloor - vacAssigned) + " días de vacaciones por asignar",
+      "En este periodo generas " + fmtH(vacEnt) + " días naturales (unos " + vacFloor + "). Has marcado " + vacAssigned + ". Las vacaciones no se pueden cambiar por horas ni por dinero, y las fechas se fijan de común acuerdo. Si el contrato terminara antes de disfrutarlas, se pagan en el finiquito.",
+      "Contrato, cláusula sexta · Art. 38 del Estatuto de los Trabajadores");
+  } else if (vacAssigned > vacCeil) {
+    add("info", "Has marcado más vacaciones de las que genera el periodo",
+      "Generas " + fmtH(vacEnt) + " días naturales y has marcado " + vacAssigned + ". Si son días adicionales pactados con la empresa, no pasa nada; si no, revisa las fechas.",
+      "Contrato, cláusula sexta");
+  } else {
+    add("ok", "Vacaciones asignadas",
+      "Has marcado " + vacAssigned + " días de vacaciones de los " + fmtH(vacEnt) + " que genera el periodo.",
+      "Contrato, cláusula sexta · Art. 38 del Estatuto de los Trabajadores");
+  }
+  const vacOut = rows.filter(r => r.t === "vac" && (Number(r.d.slice(5, 7)) < 5 || Number(r.d.slice(5, 7)) > 10));
+  if (vacOut.length) {
+    add("info", "Vacaciones fuera de mayo–octubre",
+      "El convenio sitúa las vacaciones entre mayo y octubre. Al haber empezado en septiembre, es normal acordar fechas fuera de ese periodo: eso no hace perder el derecho.",
+      "Convenio estatal de oficinas de farmacia, art. 26");
+  }
+
+  // Festivos trabajados
+  if (festw.length && c.festwSeparate) {
+    add("info", festw.length + (festw.length === 1 ? " festivo trabajado, pagado aparte" : " festivos trabajados, pagados aparte"),
+      "Festivos trabajados: " + listDates(festw.map(r => r.d)) + " (" + fmtH(festwHours) + " h). No cuentan para la jornada porque se pagan aparte. Comprueba en la nómina que se pagan con un recargo mínimo del 75% (si no te dan otro día de descanso a cambio).",
+      "Art. 37.2 del Estatuto de los Trabajadores · RD 2001/1983, art. 47");
+  } else if (festw.length) {
+    const pending = festw.length - compDays;
+    add(pending > 0 ? "warn" : "ok",
+      festw.length + (festw.length === 1 ? " festivo trabajado" : " festivos trabajados"),
+      "Festivos trabajados: " + listDates(festw.map(r => r.d)) + ". Por cada uno te corresponde un día de descanso compensatorio o, si no lo hay, cobrar esas horas con un recargo mínimo del 75%. " +
+      (pending > 0 ? "Tienes " + pending + " día(s) compensatorio(s) pendiente(s) de disfrutar (márcalos como «Desc. compensatorio»)." : "Ya tienes marcados los días compensatorios."),
+      "Art. 37.2 del Estatuto de los Trabajadores · RD 2001/1983, art. 47");
+  }
+  const xmas = rows.filter(r => (r.d.slice(5) === "12-24" || r.d.slice(5) === "12-31") && r.hraw > 0);
+  if (xmas.length) {
+    add("info", "24 y 31 de diciembre: tardes libres",
+      "Has marcado horas el " + listDates(xmas.map(r => r.d)) + ". Por convenio, las tardes del 24 y el 31 de diciembre son de permiso. Si trabajas esas tardes, esas horas son extra: tú eliges cobrarlas o librarlas.",
+      "Convenio estatal de oficinas de farmacia, art. 27.2.e");
+  }
+
+  if (remaining > 0.05 && remCompDays > 0 && needWeek > c.maxWeekly + 0.05) {
+    add("info", "No llegarás al máximo, y no pasa nada",
+      "Para completar las " + fmtH(target) + " h harían falta " + fmtH(needWeek) + " h por semana, más de " + fmtH(c.maxWeekly) + " h de media. Las " + fmtH(target) + " h son un tope: si no llegas porque la empresa no te asigna más turnos, no te pueden quitar vacaciones ni descontar sueldo.",
+      "Art. 30 y art. 38 del Estatuto de los Trabajadores");
+  }
+
+  const order = { err: 0, warn: 1, info: 2, ok: 3 };
+  A.sort((a, b) => order[a.sev] - order[b.sev]);
+  if (!A.some(a => a.sev === "err" || a.sev === "warn")) {
+    A.unshift({ sev: "ok", title: "Todo en orden", body: "Con los datos introducidos no hay incumplimientos ni días pendientes de revisar.", basis: "" });
+  }
+
+  return { rows, weeks, months, N, yd, target, vacEnt, worked, future, totalPlanned, expected, diff, remaining, remPos,
+    remCompDays, compTotal, compElapsed, needWeek, needMonth, needDay, workDaysAvail, workedDays, avgWeek, avgMonth, avgDay,
+    projection, futureUnassigned, noVacElapsed, festwHours, vacReserve, vacAssigned, vacPast, festw: festw.length, compDays, pastUnassigned: pastUnassigned.length, alerts: A, restRemaining };
+}
+/*LOGIC-END*/
+
+// ================= Estado y guardado =================
+const LS_KEY = "control-horas-2027-v1";
+function loadLocal() { try { const s = localStorage.getItem(LS_KEY); return s ? normalize(JSON.parse(s)) : null; } catch (e) { return null; } }
+function saveLocal() { try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) {} }
+let state = loadLocal() || normalize(defaultState());
+let dbRef = null, saveTimer = null, writing = false, pendingWrite = false;
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+
+function setSync(text, cls) { const el = $("sync"); el.textContent = text; el.className = "sync" + (cls ? " " + cls : ""); }
+
+function persist() {
+  state.updatedAt = Date.now();
+  saveLocal();
+  if (dbRef) { setSync("Guardando…"); clearTimeout(saveTimer); saveTimer = setTimeout(flush, 700); }
+}
+async function flush(retried) {
+  if (!dbRef) return;
+  if (writing) { pendingWrite = true; return; }
+  writing = true;
+  try {
+    await dbRef.set(JSON.parse(JSON.stringify(state)));
+    setSync("Guardado en tu cuenta", "ok");
+  } catch (e) {
+    if (e && e.code === "unavailable" && !retried) { writing = false; setTimeout(() => flush(true), 800 + Math.random() * 700); return; }
+    setSync("No se pudo guardar en tu cuenta · copia en este navegador", "warn");
+  }
+  writing = false;
+  if (pendingWrite) { pendingWrite = false; flush(); }
+}
+async function initCloud() {
+  const C = window.claude;
+  if (!C || typeof C.use !== "function") { setSync("Guardado automáticamente en este navegador", "ok"); return; }
+  const timer = setTimeout(() => setSync("Sin conexión con tu cuenta · guardado en este navegador", "warn"), 10000);
+  try {
+    const [db, user] = await Promise.all([C.use("db"), C.use("user")]);
+    if (!db || !user) { clearTimeout(timer); setSync("Guardado en este navegador"); return; }
+    const uid = await user.id();
+    if (!uid) { clearTimeout(timer); setSync("Guardado en este navegador"); return; }
+    const ref = db.collection("data/users/" + uid).doc("tracker-2027");
+    const snap = await ref.get();
+    clearTimeout(timer);
+    dbRef = ref;
+    if (snap.exists) {
+      const remote = normalize(snap.data());
+      if ((remote.updatedAt || 0) >= (state.updatedAt || 0)) { state = remote; saveLocal(); render(); setSync("Guardado en tu cuenta", "ok"); }
+      else flush();
+    } else if (state.updatedAt) flush();
+    else setSync("Guardado en tu cuenta", "ok");
+  } catch (e) {
+    clearTimeout(timer);
+    dbRef = null;
+    setSync("Guardado en este navegador", "warn");
+  }
+}
+
+// ================= Render =================
+function todayISO() { const d = new Date(); return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); }
+function refDate() { return state.config.refDate || todayISO(); }
+let R = null;
+let alertsFolded = true; // las alertas siempre empiezan plegadas al abrir
+
+function render() {
+  const c = state.config;
+  const ref = refDate();
+  R = compute(state, ref);
+  const baseTitle = $("appTitle").dataset.base;
+  $("appTitle").textContent = baseTitle + (c.worker ? " · " + c.worker : "");
+  document.title = (c.worker ? c.worker + " · " : "") + baseTitle;
+  $("subtitle").textContent = "Periodo " + fmtShort(c.start) + "/" + c.start.slice(0, 4) + " – " + fmtShort(c.end) + "/" + c.end.slice(0, 4) +
+    " · Cálculos a " + (c.refDate ? fmtLong(ref) : "hoy, " + fmtLong(ref));
+  renderTiles(); renderAlerts(); renderLegend(); renderCal(); renderAvgs(); renderCriteria(); renderMonths();
+}
+
+function tile(cls, lbl, big, note, extra = "") {
+  return `<div class="tile ${cls}"><div class="lbl">${lbl}</div><div class="big">${big}</div>${extra}<div class="note">${note}</div></div>`;
+}
+function renderTiles() {
+  const r = R, c = state.config;
+  const pct = r.target ? Math.min(100, r.worked / r.target * 100) : 0;
+  const exp = r.target ? Math.min(100, r.expected / r.target * 100) : 0;
+  const t1 = tile(r.worked > r.target ? "err" : "info", "Horas hasta hoy",
+    `${fmtH(r.worked)} <small>h</small>`,
+    `de ${fmtH(r.target)} h máximas del periodo · ${r.workedDays} días trabajados`,
+    `<div class="bar" title="La marca indica lo que tocaría llevar a hoy"><i style="width:${pct}%"></i><b style="left:calc(${exp}% - 1px)"></b></div>`);
+  const tol = Math.max(4, r.expected * 0.05);
+  let st, cls;
+  if (r.compElapsed === 0) { st = "Aún no ha empezado"; cls = ""; }
+  else if (r.diff > tol) { st = `<span class="pill warn">Por encima del ritmo</span>`; cls = "warn"; }
+  else if (r.diff < -tol) { st = `<span class="pill">Por debajo del ritmo</span>`; cls = "info"; }
+  else { st = `<span class="pill ok">En línea</span>`; cls = "ok"; }
+  const t2 = tile(cls, "Ritmo", `${fmtSigned(r.diff)} <small>h</small>`,
+    `${st}<br>A esta fecha tocaría llevar unas ${fmtH(r.expected)} h${r.vacReserve > 0.05 ? ` (reservando ${fmtH(r.vacReserve)} días de vacaciones por asignar)` : ""}`);
+  const t3 = tile("info", "Te quedan hasta el " + fmtShort(c.end),
+    `${fmtH(r.remPos)} <small>h</small>`,
+    r.remCompDays > 0 ? `≈ ${fmtH(r.needWeek)} h/semana · ${fmtH(r.needDay)} h por día de trabajo` : "Periodo terminado");
+  const pcls = r.totalPlanned > r.target + 0.05 || r.projection > r.target * 1.02 ? "warn" : "ok";
+  const t4 = tile(pcls, "Proyección final", `${fmtH(r.projection)} <small>h</small>`,
+    `Máximo ${fmtH(r.target)} h · hecho + planificado: ${fmtH(r.totalPlanned)} h`);
+  const vf = Math.floor(r.vacEnt + 1e-9);
+  const vcls = r.vacAssigned < vf ? "warn" : "ok";
+  const t5 = tile(vcls, "Vacaciones", `${r.vacAssigned} <small>de ${fmtH(r.vacEnt)} días</small>`,
+    `Disfrutadas: ${r.vacPast} · por asignar: ${Math.max(0, vf - r.vacAssigned)}`);
+  const pend = r.festw - r.compDays;
+  const t6 = c.festwSeparate
+    ? tile("info", "Festivos trabajados", `${r.festw}`, `${fmtH(r.festwHours)} h pagadas aparte (no cuentan para la jornada)`)
+    : tile(pend > 0 ? "warn" : "ok", "Festivos trabajados", `${r.festw}`,
+    `Compensatorios marcados: ${r.compDays}${pend > 0 ? " · pendientes: " + pend : ""}`);
+  $("tiles").innerHTML = t1 + t2 + t3 + t4 + t5 + t6;
+}
+
+function renderAlerts() {
+  const lab = { err: "Incumple", warn: "Revisar", info: "Info", ok: "Correcto" };
+  $("alerts").innerHTML = R.alerts.filter(a => a.sev !== "info").map(a =>
+    `<div class="alert ${a.sev}"><div class="sev">${lab[a.sev]}</div><div><div class="t">${esc(a.title)}</div><div class="b">${esc(a.body)}</div>${a.basis ? `<div class="basis">Base: ${esc(a.basis)}</div>` : ""}</div></div>`
+  ).join("");
+  const folded = alertsFolded;
+  $("alerts").hidden = folded;
+  $("alerts").closest(".panel").classList.toggle("folded", folded);
+  $("alertToggle").textContent = folded ? "Desplegar" : "Plegar";
+  $("alertToggle").setAttribute("aria-expanded", folded ? "false" : "true");
+  const nErr = R.alerts.filter(a => a.sev === "err").length, nWarn = R.alerts.filter(a => a.sev === "warn").length;
+  $("alertCount").innerHTML = nErr ? `<span class="pill err">${nErr} incumplimiento${nErr > 1 ? "s" : ""}</span>` :
+    nWarn ? `<span class="pill warn">${nWarn} por revisar</span>` : `<span class="pill ok">Sin problemas</span>`;
+}
+
+function renderLegend() {
+  $("legend").innerHTML = Object.entries(TYPES).filter(([k]) => k !== "none")
+    .map(([k, t]) => `<span style="--tc:var(${t.color})"><i></i>${t.label}</span>`).join("") +
+    `<span><i style="background:transparent;border:1px dashed var(--warn)"></i>Sin registrar</span>` +
+    `<span><i style="background:var(--past-bg)"></i>Día pasado</span>`;
+}
+
+function renderCal() {
+  const ref = refDate();
+  const rowMap = new Map(R.rows.map(r => [r.d, r]));
+  const weekMap = new Map(R.weeks.map(w => [w.start, w]));
+  const head = ["Lu","Ma","Mi","Ju","Vi","Sá","Do"].map(d => `<div class="dh">${d}</div>`).join("") + `<div class="dh"><span class="lg">Semana</span><span class="sm">Sem.</span></div>`;
+  let out = "";
+  for (const m of R.months) {
+    const y = Number(m.k.slice(0, 4)), mo = Number(m.k.slice(5, 7));
+    const mFirst = m.k + "-01";
+    const mLast = toISO(Date.UTC(y, mo, 0));
+    const from = mFirst < state.config.start ? state.config.start : mFirst;
+    const to = mLast > state.config.end ? state.config.end : mLast;
+    let html = head;
+    for (let w = addDays(from, -dow(from)); w <= to; w = addDays(w, 7)) {
+      let mh = 0, mwd = 0, split = false;
+      for (let i = 0; i < 7; i++) {
+        const d = addDays(w, i);
+        const r = rowMap.get(d);
+        if (d < from || d > to || !r) { if (r) split = true; html += `<div class="slot"><div class="cell blank" aria-hidden="true"></div></div>`; continue; }
+        mh += r.h; if (r.h > 0) mwd++;
+        const t = TYPES[r.t];
+        const cls = ["cell", "in", r.t === "none" ? "none" : "", r.past ? "past" : "future", d === ref ? "today" : ""].join(" ");
+        const hTxt = t.hours ? fmtH(r.hraw, 2) + "<small> h</small>" : "";
+        const flag = state.config.warnDaily && r.hraw > state.config.maxDaily + 0.001 ? `<span class="flag" title="Más de ${fmtH(state.config.maxDaily)} h">!</span>` : "";
+        const title = fmtLong(d) + " · " + t.label + (t.hours ? " · " + fmtH(r.hraw, 2) + " h" + (r.hx ? " (pagadas aparte)" : "") : "") + (r.hol ? " · " + r.hol : "") + (r.note ? " · " + r.note : "");
+        html += `<div class="slot${r.past && d !== ref ? " past" : ""}"><button type="button" class="${cls}" data-d="${d}" style="--tc:${t.color ? "var(" + t.color + ")" : "transparent"}" title="${esc(title)}" aria-label="${esc(title)}">
+          <span class="dn">${Number(d.slice(8, 10))}</span>${r.hol ? '<span class="dot"></span>' : ""}
+          <span class="h">${hTxt}</span><span class="ty">${r.t === "none" ? "" : esc(t.label)}</span>${flag}</button></div>`;
+      }
+      const wk = weekMap.get(w);
+      const over = wk && wk.over;
+      html += `<div class="slot"><div class="wk${over ? " over" : ""}" title="${wk ? "Semana completa (lunes a domingo): " + fmtH(wk.hrs) + " h" : ""}"><span class="h">${fmtH(mh)}<small> h</small></span>` +
+        (split && wk ? `<span class="m sp">Semana: ${fmtH(wk.hrs)} h</span>` : `<span class="m">${mwd} día${mwd === 1 ? "" : "s"}</span>`) + `</div></div>`;
+    }
+    out += `<div class="month"><div class="month-head"><h3>${MONTHS[mo - 1]} ${y}</h3>
+      <span class="ms">${fmtH(m.worked + m.planned)} h · ${m.workedDays + R.rows.filter(r => !r.past && r.d.startsWith(m.k) && r.h > 0).length} días de trabajo${m.vac ? " · " + m.vac + " de vacaciones" : ""}</span></div>
+      <div class="cal-scroll"><div class="cal">${html}</div></div></div>`;
+  }
+  $("cal").innerHTML = out;
+}
+
+function kv(pairs) { return pairs.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join(""); }
+function renderAvgs() {
+  const r = R;
+  $("avgDone").innerHTML = kv([
+    ["Horas trabajadas", fmtH(r.worked) + " h"],
+    ["Días trabajados", r.workedDays],
+    ["Media por semana", r.noVacElapsed ? fmtH(r.avgWeek) + " h" : "—"],
+    ["Media por mes", r.noVacElapsed ? fmtH(r.avgMonth) + " h" : "—"],
+    ["Media por día trabajado", r.workedDays ? fmtH(r.avgDay, 2) + " h" : "—"]
+  ].concat(state.config.festwSeparate && r.festw ? [["Festivos trabajados (pagados aparte)", fmtH(r.festwHours) + " h"]] : []));
+  $("avgLeft").innerHTML = kv([
+    ["Horas hasta el máximo", fmtH(r.remPos) + " h"],
+    ["Días computables que quedan", r.remCompDays],
+    ["Media semanal para llegar al máximo", r.remCompDays ? fmtH(r.needWeek) + " h" : "—"],
+    ["Media mensual para llegar al máximo", r.remCompDays ? fmtH(r.needMonth) + " h" : "—"],
+    ["Por día de trabajo (con 1,5 días libres/semana)", r.workDaysAvail > 0 ? fmtH(r.needDay, 2) + " h" : "—"],
+    ["Ya planificadas en días futuros", fmtH(r.future) + " h"]
+  ]);
+}
+
+function renderCriteria() {
+  const c = state.config, r = R;
+  $("criteria").innerHTML = `<ul>
+    <li><strong>Jornada:</strong> ${fmtH(c.annualHours, 0)} h al año de trabajo efectivo, máximo ${fmtH(c.maxWeekly)} h semanales de media, de lunes a domingo (cláusula segunda).</li>
+    <li><strong>Este periodo:</strong> ${r.N} días → máximo ${fmtH(r.target)} h y ${fmtH(r.vacEnt)} días naturales de vacaciones.</li>
+    <li><strong>Vacaciones:</strong> 30 días naturales por año o su proporción (cláusula sexta). No se pueden compensar con horas ni con dinero.</li>
+    <li><strong>Descansos:</strong> día y medio por semana (acumulable en 14 días) y 12 h entre jornadas.${c.warnDaily ? " Aviso a partir de " + fmtH(c.maxDaily) + " h al día." : ""}</li>
+    <li><strong>Festivos trabajados:</strong> ${c.festwSeparate ? "se pagan aparte y no cuentan para la jornada (recargo mínimo del 75%)" : "cuentan como jornada y dan derecho a un día compensatorio o a pago con recargo"}. Tardes del 24 y 31 de diciembre libres por convenio.</li>
+    <li><strong>Convenio:</strong> estatal de oficinas de farmacia (cláusula octava).</li>
+  </ul>`;
+}
+
+function renderMonths() {
+  const ms = R.months;
+  let h = `<thead><tr><th>Mes</th><th>Días</th><th>Trabajadas</th><th>Planificadas</th><th>Días trab.</th><th>Media/día</th><th>Media/semana</th><th>Vacaciones</th><th>Referencia</th><th>Diferencia</th></tr></thead><tbody>`;
+  for (const m of ms) {
+    const tot = m.worked + m.planned, d = tot - m.ref;
+    h += `<tr><td>${MONTHS[Number(m.k.slice(5, 7)) - 1]}</td><td>${m.days}</td><td>${fmtH(m.worked)} h</td><td>${fmtH(m.planned)} h</td><td>${m.workedDays}</td>
+      <td>${m.avgDay == null ? "—" : fmtH(m.avgDay, 2) + " h"}</td><td>${m.avgWeek == null ? "—" : fmtH(m.avgWeek) + " h"}</td><td>${m.vac}</td>
+      <td>${fmtH(m.ref)} h</td><td class="${d > 0.05 ? "pos" : "neg"}">${fmtSigned(d)} h</td></tr>`;
+  }
+  const r = R;
+  h += `</tbody><tfoot><tr><td>Total</td><td>${r.N}</td><td>${fmtH(r.worked)} h</td><td>${fmtH(r.future)} h</td><td>${r.workedDays}</td><td>${r.workedDays ? fmtH(r.avgDay, 2) + " h" : "—"}</td>
+    <td>${r.compElapsed ? fmtH(r.avgWeek) + " h" : "—"}</td><td>${r.vacAssigned}</td><td>${fmtH(r.target)} h</td><td class="${r.totalPlanned - r.target > 0.05 ? "pos" : "neg"}">${fmtSigned(r.totalPlanned - r.target)} h</td></tr></tfoot>`;
+  $("monthTbl").innerHTML = h;
+}
+
+$("alertToggle").addEventListener("click", () => { alertsFolded = !alertsFolded; renderAlerts(); });
+
+// ================= Modales =================
+let lastFocus = null;
+function openOv(id) { lastFocus = document.activeElement; $(id).classList.add("open"); }
+function closeOv(id) { $(id).classList.remove("open"); if (lastFocus && lastFocus.focus) try { lastFocus.focus(); } catch (e) {} }
+document.querySelectorAll(".ov").forEach(ov => {
+  ov.addEventListener("click", e => { if (e.target === ov || e.target.closest("[data-close]")) closeOv(ov.id); });
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") document.querySelectorAll(".ov.open").forEach(o => closeOv(o.id));
+});
+
+// --- Editor de día ---
+let edDate = null, edType = "none";
+const HOUR_CHIPS = [6.5, 7, 7.5, 8, 12.5];
+$("hourChips").innerHTML = HOUR_CHIPS.map(h => `<button type="button" data-h="${h}">${fmtH(h)} h</button>`).join("");
+$("hourChips").addEventListener("click", e => { const b = e.target.closest("[data-h]"); if (b) { $("dayHours").value = b.dataset.h; if (!TYPES[edType].hours) setEdType(isHol(edDate) ? "festw" : "work"); } });
+function isHol(d) { return state.config.holidays.some(h => h.d === d); }
+function setEdType(t) {
+  edType = t;
+  $("dayTypes").querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", b.dataset.t === t ? "true" : "false"));
+  const hrs = TYPES[t].hours || t === "none";
+  $("hoursField").style.display = hrs ? "" : "none";
+  $("hoursHint").textContent = t === "leave" ? "Indica las horas que te tocaban ese día: un permiso retribuido cuenta como jornada." :
+    t === "festw" ? (state.config.festwSeparate ? "Se paga aparte: estas horas no cuentan para la jornada." : "Cuenta como horas trabajadas y te da derecho a un día compensatorio (o a cobrarlo con recargo).") :
+    t === "none" ? "Escribe las horas y se guardará como día de trabajo, o elige otro tipo de día." : "";
+}
+$("dayTypes").innerHTML = Object.entries(TYPES).filter(([k]) => k !== "none")
+  .map(([k, t]) => `<button type="button" data-t="${k}" style="--tc:var(${t.color})" aria-pressed="false">${t.label}</button>`).join("");
+$("dayTypes").addEventListener("click", e => {
+  const b = e.target.closest("[data-t]"); if (!b) return;
+  let t = b.dataset.t;
+  if (t === "work" && isHol(edDate)) t = "festw";
+  setEdType(t);
+  if (TYPES[t].hours) { $("dayHours").focus(); $("dayHours").select(); }
+});
+function openDay(d) {
+  edDate = d;
+  const r = R.rows.find(x => x.d === d);
+  const e = state.days[d];
+  $("dayTitle").textContent = fmtLong(d).replace(/^./, ch => ch.toUpperCase());
+  $("dayMeta").textContent = [r && r.hol ? "Festivo: " + r.hol : "", d > refDate() ? "Día futuro (planificación)" : ""].filter(Boolean).join(" · ");
+  $("dayHours").value = e && TYPES[e.t].hours ? e.h : "";
+  $("dayNote").value = e && e.n ? e.n : "";
+  setEdType(r ? r.t : "none");
+  openOv("ovDay");
+  setTimeout(() => { if (TYPES[edType].hours || edType === "none") $("dayHours").focus(); else { const b = $("dayTypes").querySelector('[aria-pressed="true"]') || $("dayTypes").querySelector("button"); b.focus(); } }, 30);
+}
+function saveDay() {
+  if (!edDate) return;
+  let t = edType;
+  const hv = $("dayHours").value.trim().replace(",", ".");
+  if (t === "none" && hv !== "" && Number(hv) > 0) t = isHol(edDate) ? "festw" : "work";
+  if (t === "work" && isHol(edDate)) t = "festw";
+  if (t === "none") delete state.days[edDate];
+  else if (t === "fest" && isHol(edDate) && !$("dayNote").value.trim()) delete state.days[edDate];
+  else {
+    const o = { t };
+    if (TYPES[t].hours) { const h = Number(hv); o.h = isFinite(h) && h >= 0 ? Math.min(h, 24) : 0; }
+    const n = $("dayNote").value.trim(); if (n) o.n = n.slice(0, 140);
+    state.days[edDate] = o;
+  }
+  persist(); render();
+}
+$("daySave").addEventListener("click", () => { saveDay(); closeOv("ovDay"); });
+$("daySaveNext").addEventListener("click", () => {
+  saveDay();
+  const nx = addDays(edDate, 1);
+  if (nx <= state.config.end) openDay(nx); else closeOv("ovDay");
+});
+$("dayClear").addEventListener("click", () => { delete state.days[edDate]; persist(); render(); closeOv("ovDay"); });
+$("ovDay").addEventListener("keydown", e => {
+  if (e.key === "Enter" && e.target.tagName === "INPUT") { e.preventDefault(); $("daySaveNext").click(); }
+});
+$("cal").addEventListener("click", e => { const b = e.target.closest("button.cell[data-d]"); if (b) openDay(b.dataset.d); });
+
+// --- Rellenar varios días ---
+const WD_DEFAULT = [8, 8, 8, 8, 8, 0, 0];
+$("fillWd").innerHTML = ["Lu","Ma","Mi","Ju","Vi","Sá","Do"].map((d, i) =>
+  `<div class="wd"><label for="wd${i}">${d}</label><input id="wd${i}" type="number" min="0" max="24" step="0.25" value="${WD_DEFAULT[i]}"></div>`).join("");
+function fillTargets() {
+  const a = $("fillFrom").value, b = $("fillTo").value;
+  if (!isISO(a) || !isISO(b) || b < a) return [];
+  const from = a < state.config.start ? state.config.start : a, to = b > state.config.end ? state.config.end : b;
+  if (to < from) return [];
+  const onlyEmpty = $("fillOnlyEmpty").checked, restZero = $("fillRest").checked;
+  const out = [];
+  for (const d of listDays(from, to)) {
+    if (onlyEmpty && (state.days[d] || isHol(d))) continue;
+    const h = Number(($("wd" + dow(d)).value || "0").replace(",", ".")) || 0;
+    if (h > 0) out.push([d, { t: isHol(d) ? "festw" : "work", h: Math.min(h, 24) }]);
+    else if (restZero) out.push([d, { t: "rest" }]);
+  }
+  return out;
+}
+function fillPreview() {
+  const t = fillTargets();
+  const hrs = t.reduce((a, [, o]) => a + (o.h || 0), 0);
+  $("fillPreview").textContent = t.length ? `Se rellenarán ${t.length} días (${fmtH(hrs)} h en total).` : "No hay días que rellenar con estos criterios.";
+}
+["fillFrom","fillTo","fillOnlyEmpty","fillRest"].forEach(id => $(id).addEventListener("input", fillPreview));
+$("fillWd").addEventListener("input", fillPreview);
+$("btnFill").addEventListener("click", () => {
+  const ref = refDate();
+  let from = addDays(ref, 1);
+  if (from < state.config.start) from = state.config.start;
+  if (from > state.config.end) from = state.config.start;
+  $("fillFrom").value = from; $("fillTo").value = state.config.end;
+  fillPreview(); openOv("ovFill");
+});
+$("fillApply").addEventListener("click", () => {
+  const t = fillTargets(); t.forEach(([d, o]) => { state.days[d] = o; });
+  persist(); render(); closeOv("ovFill");
+});
+
+// --- Ajustes ---
+let holDraft = [];
+function renderHol() {
+  holDraft.sort((a, b) => a.d < b.d ? -1 : 1);
+  $("holList").innerHTML = holDraft.length ? holDraft.map((h, i) =>
+    `<div class="item"><span><strong>${fmtShort(h.d)}</strong> · ${esc(h.n)} <span class="hint">(${DOWN[dow(h.d)]})</span></span><button class="btn small danger" type="button" data-i="${i}">Quitar</button></div>`).join("")
+    : `<div class="empty-note">No hay festivos.</div>`;
+}
+$("holList").addEventListener("click", e => { const b = e.target.closest("[data-i]"); if (b) { holDraft.splice(Number(b.dataset.i), 1); renderHol(); } });
+$("holAdd").addEventListener("click", () => {
+  const d = $("holDate").value, n = $("holName").value.trim() || "Festivo local";
+  if (!isISO(d)) { $("holDate").focus(); return; }
+  if (!holDraft.some(h => h.d === d)) holDraft.push({ d, n: n.slice(0, 60) });
+  $("holDate").value = ""; $("holName").value = ""; renderHol();
+});
+$("btnSettings").addEventListener("click", () => {
+  const c = state.config;
+  $("cfWorker").value = c.worker || ""; $("cfStart").value = c.start; $("cfEnd").value = c.end; $("cfAnnual").value = c.annualHours; $("cfVac").value = c.annualVac;
+  $("cfDaily").value = c.maxDaily; $("cfWeekly").value = c.maxWeekly; $("cfFestwSep").checked = !!c.festwSeparate; $("cfWarnDaily").checked = c.warnDaily !== false; $("cfRef").value = c.refDate;
+  holDraft = c.holidays.map(h => ({ ...h })); renderHol();
+  $("dataBox").value = ""; $("dataMsg").textContent = ""; resetArmed = false; $("dataReset").textContent = "Borrar todo";
+  openOv("ovSet");
+});
+$("setSave").addEventListener("click", () => {
+  const num = (id, def) => { const v = Number(String($(id).value).replace(",", ".")); return isFinite(v) && v >= 0 && $(id).value !== "" ? v : def; };
+  const c = state.config;
+  const s = $("cfStart").value, e = $("cfEnd").value;
+  if (!isISO(s) || !isISO(e) || e < s) { $("cfEnd").focus(); $("dataMsg").textContent = "Revisa las fechas: el fin debe ser posterior al inicio."; return; }
+  if (listDays(s, e).length > 400) { $("dataMsg").textContent = "El periodo no puede superar un año."; return; }
+  Object.assign(c, { worker: $("cfWorker").value.trim().slice(0, 60), start: s, end: e, annualHours: num("cfAnnual", c.annualHours), annualVac: num("cfVac", c.annualVac),
+    maxDaily: num("cfDaily", c.maxDaily), maxWeekly: num("cfWeekly", c.maxWeekly), festwSeparate: $("cfFestwSep").checked, warnDaily: $("cfWarnDaily").checked,
+    refDate: isISO($("cfRef").value) ? $("cfRef").value : "", holidays: holDraft.slice() });
+  persist(); render(); closeOv("ovSet");
+});
+$("dataShow").addEventListener("click", () => { $("dataBox").value = JSON.stringify(state); $("dataBox").select(); $("dataMsg").textContent = "Copia este texto y guárdalo donde quieras."; });
+$("dataCopy").addEventListener("click", async () => {
+  if (!$("dataBox").value) $("dataBox").value = JSON.stringify(state);
+  try { await navigator.clipboard.writeText($("dataBox").value); $("dataMsg").textContent = "Copiado."; }
+  catch (e) { $("dataBox").select(); $("dataMsg").textContent = "Selecciona el texto y cópialo manualmente."; }
+});
+$("dataImport").addEventListener("click", () => {
+  try {
+    const obj = JSON.parse($("dataBox").value);
+    if (!obj || !obj.config || !obj.days) throw new Error();
+    state = normalize(obj); persist(); render(); closeOv("ovSet");
+  } catch (e) { $("dataMsg").textContent = "El texto pegado no es una copia válida."; }
+});
+$("dataDownload").addEventListener("click", () => {
+  try {
+    const blob = new Blob([JSON.stringify(state, null, 1)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "control-horas-" + todayISO() + ".json";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    $("dataMsg").textContent = "Copia descargada.";
+  } catch (e) { $("dataMsg").textContent = "No se pudo descargar: usa «Mostrar datos» y copia el texto."; }
+});
+$("dataFile").addEventListener("change", e => {
+  const f = e.target.files && e.target.files[0]; if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    try { const obj = JSON.parse(rd.result); if (!obj || !obj.config || !obj.days) throw new Error();
+      state = normalize(obj); persist(); render(); closeOv("ovSet"); }
+    catch (err) { $("dataMsg").textContent = "El archivo no es una copia válida."; }
+    e.target.value = "";
+  };
+  rd.readAsText(f);
+});
+let resetArmed = false;
+$("dataReset").addEventListener("click", () => {
+  if (!resetArmed) { resetArmed = true; $("dataReset").textContent = "Pulsa otra vez para borrar"; $("dataMsg").textContent = "Se borrarán todos los días y ajustes."; return; }
+  state = defaultState(); persist(); render(); closeOv("ovSet");
+});
+
+// ================= Inicio =================
+if (window.claude) $("dataDownload").style.display = "none"; // el visor de Claude no permite descargas: allí se usa «Copiar»
+render();
+let cloudTried = false;
+function tryCloud() { if (cloudTried) return; if (window.claude && typeof window.claude.use === "function") { cloudTried = true; initCloud(); } }
+tryCloud();
+setTimeout(() => { if (!cloudTried) { tryCloud(); if (!cloudTried) setSync("Guardado automáticamente en este navegador", "ok"); } }, 1500);
+</script>
+</body>
+</html>
